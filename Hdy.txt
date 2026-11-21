@@ -1,0 +1,102 @@
+Отличный план преподавателя: разворачивание через Docker с клонированием по SSH обеспечит изоляцию, быстрое обновление кода и стабильность на раундах.
+Ниже — чёткая последовательность действий с учётом российских зеркал для Docker.
+
+Шаг 1. Подключение к серверу и настройка SSH-ключа для Git
+
+Подключись к серверу:
+bash
+ssh root@<IP_СЕРВЕРА>
+Используйте код с осторожностью.
+Сгенерируй приватный и публичный SSH-ключи на сервере (нажимай Enter на все вопросы, чтобы оставить без пароля):
+bash
+ssh-keygen -t ed25519 -C "server-deploy"
+Используйте код с осторожностью.
+Выведи публичный ключ на экран и скопируй его:
+bash
+cat ~/.ssh/id_ed25519.pub
+Используйте код с осторожностью.
+Добавь этот ключ в свой Git-аккаунт (GitHub / GitLab: Settings -> SSH and GPG keys -> New SSH key или в Deploy Keys конкретного репозитория).
+
+Шаг 2. Клонирование репозитория по SSH в директорию
+
+Создай директорию и склонируй проект (при первом подключении введи yes):
+bash
+mkdir -p /opt/projects
+cd /opt/projects
+git clone git@github.com:<ТВОЙ_ЛОГИН>/<РЕПОЗИТОРИЙ>.git archiver
+cd archiver
+Используйте код с осторожностью.
+
+Шаг 3. Установка Docker (с использованием зеркал)
+
+Установи сам Docker Engine и Compose-плагин:
+bash
+apt update && apt install -y ca-certificates curl
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://docker.com -o /etc/apt/keyrings/docker.asc
+chmod a+r /etc/apt/keyrings/docker.asc
+
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://docker.com $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+apt update && apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+Используйте код с осторожностью.
+Настрой зеркала для скачивания образов (чтобы Docker Hub не блокировался и качал быстро):
+bash
+mkdir -p /etc/docker
+cat <<EOF > /etc/docker/daemon.json
+{
+  "registry-mirrors": [
+    "https://huecker.io",
+    "https://timeweb.cloud",
+    "https://gcr.io"
+  ]
+}
+EOF
+systemctl daemon-reload
+systemctl restart docker
+Используйте код с осторожностью.
+
+Шаг 4. Создание Dockerfile и запуск контейнера
+
+Если в репозитории ещё нет Dockerfile, создай его в папке /opt/projects/archiver:
+bash
+cat <<EOF > Dockerfile
+FROM node:20-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+COPY . .
+# Раскомментируй следующую строку, если нужна сборка фронта/воркера:
+# RUN npm run build
+EXPOSE 4003
+CMD ["node", "src/server.js"]
+EOF
+Используйте код с осторожностью.
+(Замени 4003 на порт из твоего src/server.js, убедись, что сервер слушает 0.0.0.0, а не 127.0.0.1).
+Собери образ и запусти контейнер с автоперезапуском и пробросом на 80-й порт (чтобы открывался сразу по IP без указания порта):
+bash
+docker build -t archiver-app .
+docker run -d \
+  --name archiver \
+  --restart unless-stopped \
+  -p 80:4003 \
+  archiver-app
+Используйте код с осторожностью.
+
+Шаг 5. Проверка и обновление в будущем
+
+Проверь, что контейнер работает и отвечает:
+bash
+docker ps
+curl -i http://localhost/v1/health
+Используйте код с осторожностью.
+После этого вбивай http://<IP_СЕРВЕРА> в Песочницу и Кабинет команды на арене.
+Как обновлять проект перед раундами:
+bash
+cd /opt/projects/archiver
+git pull
+docker build -t archiver-app .
+docker stop archiver && docker rm archiver
+docker run -d --name archiver --restart unless-stopped -p 80:4003 archiver-app
+Используйте код с осторожностью.
+Пришли содержимое package.json и начало файла src/server.js (где запускается сервер и задаётся порт), чтобы я проверил правильность команд сборки и проброса портов в Dockerfile.
