@@ -62,6 +62,3 @@ npm run build
 ```bash
 npm test
 ```
-
-nDx2-fyDoII43K6j
-
